@@ -1,4 +1,3 @@
-
 // This service simulates blockchain interactions.
 // In a real DApp, this would use ethers.js or web3.js to interact with a smart contract.
 "use client";
@@ -213,9 +212,6 @@ export const watchAssetInWallet = async (nft: NFT): Promise<boolean> => {
   if (typeof window.ethereum !== 'undefined') {
     try {
       await simulateDelay(500); // Simulate interaction
-      // In a real scenario, this would prompt MetaMask
-      // For simulation, we just log it and return success
-      console.log('Attempting to add NFT to wallet:', nft);
       const wasAdded = await window.ethereum.request({
         method: 'wallet_watchAsset',
         params: {
@@ -231,33 +227,47 @@ export const watchAssetInWallet = async (nft: NFT): Promise<boolean> => {
         toast({ title: "NFT Added", description: `${nft.name} should now be visible in your MetaMask wallet.` });
         return true;
       } else {
-        toast({ title: "NFT Not Added", description: "You chose not to add the NFT to your wallet, or an error occurred.", variant: "default" });
+        // This case might occur if the user cancels or if the wallet doesn't throw an error but returns false.
+        toast({ title: "NFT Not Added", description: "You chose not to add the NFT to your wallet, or the wallet provider indicated failure without an error.", variant: "default" });
         return false;
       }
     } catch (error: any) {
-      console.error('Error watching asset:', error); // Logs the raw error for debugging
-      
+      console.error('Error watching asset (raw):', error); // Keep for debugging
+
+      let toastTitle = "Failed to Add NFT";
       let toastDescription = "An unknown error occurred while trying to add the NFT to your wallet.";
-      
-      if (error && typeof error === 'object' && error.message && typeof error.message === 'string' && error.message.trim() !== '') {
-        toastDescription = error.message;
+
+      if (error && typeof error === 'object') {
+        if (error.code === 4001) { // MetaMask user rejected request
+          toastTitle = "Request Cancelled";
+          toastDescription = "You cancelled the request to add the NFT to your wallet.";
+        } else if (error.message && typeof error.message === 'string' && error.message.trim() !== '') {
+          toastDescription = error.message;
+        } else if (Object.keys(error).length === 0 && error.constructor === Object) {
+          // Error is an empty object {}
+          toastDescription = "The wallet provider returned an unspecified error. Please try again or check your wallet application.";
+        } else {
+          // Error is an object but not an empty one and has no standard message
+          try {
+            const errStr = JSON.stringify(error);
+            // Avoid showing "{}" as the error string if stringify results in that.
+            if (errStr !== '{}') { 
+                 toastDescription = `An unexpected error occurred: ${errStr.substring(0, 100)}${errStr.length > 100 ? '...' : ''}`;
+            } else {
+                 toastDescription = "The wallet provider returned an unspecified error object. Please try again or check your wallet application.";
+            }
+          } catch (e) {
+            // JSON.stringify failed, stick to a more generic message for this case
+            toastDescription = "An non-descript error object was returned by the wallet provider. Please try again.";
+          }
+        }
       } else if (typeof error === 'string' && error.trim() !== '') {
         // If the error itself is a string
         toastDescription = error;
       }
-      // Example of handling specific error codes if your wallet provider uses them:
-      // else if (error && typeof error === 'object' && typeof error.code === 'number') {
-      //   switch(error.code) {
-      //     case 4001: // User rejected request
-      //       toastDescription = "Request to add NFT was cancelled.";
-      //       break;
-      //     default:
-      //       toastDescription = `An error occurred (code: ${error.code}) while trying to add the NFT to your wallet.`;
-      //   }
-      // }
       
       toast({ 
-        title: "Failed to Add NFT", 
+        title: toastTitle, 
         description: toastDescription, 
         variant: "destructive" 
       });
@@ -274,4 +284,3 @@ export const getArtisanDetails = async (artisanId: string): Promise<Artisan | un
   await simulateDelay(100);
   return mockArtisans.find(a => a.id === artisanId);
 };
-
