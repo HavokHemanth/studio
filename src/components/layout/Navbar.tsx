@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Palette, Home, ShieldCheck, UserCircle, Gem, ShoppingBag } from 'lucide-react';
+import { Palette, Home, ShieldCheck, UserCircle, Gem, ShoppingBag, UserPlus } from 'lucide-react';
 import ConnectWalletButton from '@/components/shared/ConnectWalletButton';
 import { useWallet } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ const Navbar = () => {
   const { account, isArtisan, disconnect, artisanProfile } = useWallet();
 
   const getInitials = (name: string) => {
+    if (!name) return "";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 
@@ -51,6 +52,13 @@ const Navbar = () => {
             <Button variant="ghost" asChild>
               <Link href="/dashboard" className="flex items-center space-x-1">
                 <UserCircle size={18} /> <span>Artisan Dashboard</span>
+              </Link>
+            </Button>
+          )}
+          {!isArtisan && account && (
+            <Button variant="ghost" asChild>
+              <Link href="/artisans/register" className="flex items-center space-x-1">
+                <UserPlus size={18} /> <span>Become an Artisan</span>
               </Link>
             </Button>
           )}
@@ -96,6 +104,11 @@ const Navbar = () => {
                   {isArtisan && (
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard" className="flex items-center"><UserCircle size={16} className="mr-2"/>Artisan Dashboard</Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isArtisan && account && (
+                     <DropdownMenuItem asChild>
+                      <Link href="/artisans/register" className="flex items-center"><UserPlus size={16} className="mr-2"/>Become an Artisan</Link>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />

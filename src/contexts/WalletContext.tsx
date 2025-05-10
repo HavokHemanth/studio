@@ -15,6 +15,7 @@ interface WalletContextType {
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshNfts: () => Promise<void>;
+  refreshArtisanProfile: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -27,32 +28,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { toast } = useToast();
 
-  const handleAccountsChanged = useCallback(async (accounts: string[]) => {
-    if (accounts.length === 0) {
-      console.log('Please connect to MetaMask.');
-      disconnect();
-    } else if (accounts[0] !== account) {
-      const newAccount = accounts[0];
-      setAccount(newAccount);
-      checkArtisanStatus(newAccount);
-      fetchNftsForAccount(newAccount);
-      toast({ title: 'Account Switched', description: `Connected to ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)}` });
-    }
-  }, [account, toast]); // Added toast
-
-  const disconnect = () => {
-    setAccount(null);
-    setIsArtisan(false);
-    setArtisanProfile(null);
-    setUserNfts([]);
-    setIsLoading(false);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem('walletConnected');
-    }
-    toast({ title: 'Wallet Disconnected' });
-  };
-  
-  const checkArtisanStatus = async (currentAccount: string) => {
+  const checkArtisanStatus = useCallback(async (currentAccount: string) => {
     if (currentAccount) {
       const artisanStatus = await isArtisanRegistered(currentAccount);
       setIsArtisan(artisanStatus);
@@ -66,8 +42,34 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setIsArtisan(false);
       setArtisanProfile(null);
     }
-  };
+  }, []);
 
+
+  const handleAccountsChanged = useCallback(async (accounts: string[]) => {
+    if (accounts.length === 0) {
+      console.log('Please connect to MetaMask.');
+      disconnect();
+    } else if (accounts[0].toLowerCase() !== account?.toLowerCase()) {
+      const newAccount = accounts[0];
+      setAccount(newAccount);
+      await checkArtisanStatus(newAccount);
+      await fetchNftsForAccount(newAccount);
+      toast({ title: 'Account Switched', description: `Connected to ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)}` });
+    }
+  }, [account, toast, checkArtisanStatus]); 
+
+  const disconnect = () => {
+    setAccount(null);
+    setIsArtisan(false);
+    setArtisanProfile(null);
+    setUserNfts([]);
+    setIsLoading(false);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem('walletConnected');
+    }
+    toast({ title: 'Wallet Disconnected' });
+  };
+  
   const fetchNftsForAccount = async (currentAccount: string) => {
     if (currentAccount) {
       const nfts = await fetchUserNfts(currentAccount);
@@ -88,8 +90,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         localStorage.setItem('walletConnected', 'true');
       }
       toast({ title: 'Wallet Connected', description: `Address: ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)}` });
-    } else {
-      // connectWallet function already shows a toast on failure or if MetaMask is not installed
     }
     setIsLoading(false);
   };
@@ -102,6 +102,15 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const refreshArtisanProfile = async () => {
+    if (account) {
+      setIsLoading(true);
+      await checkArtisanStatus(account);
+      setIsLoading(false);
+    }
+  };
+
+
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
@@ -112,7 +121,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await checkArtisanStatus(currentAccount);
           await fetchNftsForAccount(currentAccount);
         } else {
-           localStorage.removeItem('walletConnected'); // Clear if no account found
+           localStorage.removeItem('walletConnected'); 
         }
       }
       setIsLoading(false);
@@ -121,8 +130,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (typeof window.ethereum !== 'undefined') {
       window.ethereum.on('accountsChanged', handleAccountsChanged);
-      // For network changes, you might want to reload or warn the user.
-      // window.ethereum.on('chainChanged', (_chainId) => window.location.reload());
     }
 
     return () => {
@@ -130,11 +137,11 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
       }
     };
-  }, [handleAccountsChanged]);
+  }, [handleAccountsChanged, checkArtisanStatus]);
 
 
   return (
-    <WalletContext.Provider value={{ account, isArtisan, artisanProfile, userNfts, isLoading, connect, disconnect, refreshNfts }}>
+    <WalletContext.Provider value={{ account, isArtisan, artisanProfile, userNfts, isLoading, connect, disconnect, refreshNfts, refreshArtisanProfile }}>
       {children}
     </WalletContext.Provider>
   );

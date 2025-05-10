@@ -9,21 +9,40 @@ import { toast } from '@/hooks/use-toast';
 // Simulate a delay for blockchain operations
 const simulateDelay = (ms: number = 1000) => new Promise(resolve => setTimeout(resolve, ms));
 
-// In-memory state for products and NFTs to simulate changes
+// In-memory state for products, artisans, and NFTs to simulate changes
 let currentProducts: Product[] = JSON.parse(JSON.stringify(mockProducts));
+let currentArtisans: Artisan[] = JSON.parse(JSON.stringify(mockArtisans));
 let currentUserNfts: Record<string, NFT[]> = JSON.parse(JSON.stringify(mockUserNfts));
 let currentProductProvenance: Record<string, ProductProvenance> = JSON.parse(JSON.stringify(mockProductProvenance));
 
 
 export const isArtisanRegistered = async (walletAddress: string): Promise<boolean> => {
   await simulateDelay(100);
-  return mockArtisans.some(artisan => artisan.walletAddress.toLowerCase() === walletAddress.toLowerCase());
+  return currentArtisans.some(artisan => artisan.walletAddress.toLowerCase() === walletAddress.toLowerCase());
 };
 
 export const getArtisanByWalletAddress = async (walletAddress: string): Promise<Artisan | undefined> => {
   await simulateDelay(100);
-  return mockArtisans.find(artisan => artisan.walletAddress.toLowerCase() === walletAddress.toLowerCase());
+  return currentArtisans.find(artisan => artisan.walletAddress.toLowerCase() === walletAddress.toLowerCase());
 }
+
+export const registerArtisan = async (artisanData: Omit<Artisan, 'id' | 'walletAddress'>, walletAddress: string): Promise<Artisan | null> => {
+  await simulateDelay();
+  const existingArtisan = currentArtisans.find(a => a.walletAddress.toLowerCase() === walletAddress.toLowerCase());
+  if (existingArtisan) {
+    toast({ title: "Registration Failed", description: "This wallet address is already registered as an artisan.", variant: "destructive" });
+    return null;
+  }
+
+  const newArtisan: Artisan = {
+    ...artisanData,
+    id: `artisan-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    walletAddress: walletAddress,
+  };
+  currentArtisans.push(newArtisan);
+  toast({ title: "Registration Successful", description: `Welcome, ${newArtisan.name}! You are now registered as an artisan.` });
+  return newArtisan;
+};
 
 export const connectWallet = async (): Promise<string | null> => {
   if (typeof window.ethereum !== 'undefined') {
@@ -57,11 +76,11 @@ export const getCurrentWallet = async (): Promise<string | null> => {
   return null;
 };
 
-export const addProduct = async (productData: Omit<Product, 'id' | 'creationDate' | 'isSold' | 'ownerAddress'>, artisanWallet: string): Promise<Product | null> => {
+export const addProduct = async (productData: Omit<Product, 'id' | 'creationDate' | 'isSold' | 'ownerAddress' | 'artisanId'>, artisanWallet: string): Promise<Product | null> => {
   await simulateDelay();
-  const artisan = mockArtisans.find(a => a.walletAddress === artisanWallet);
+  const artisan = currentArtisans.find(a => a.walletAddress.toLowerCase() === artisanWallet.toLowerCase());
   if (!artisan) {
-    toast({ title: "Error", description: "Invalid artisan.", variant: "destructive" });
+    toast({ title: "Error", description: "Invalid artisan account.", variant: "destructive" });
     return null;
   }
 
@@ -69,12 +88,11 @@ export const addProduct = async (productData: Omit<Product, 'id' | 'creationDate
     ...productData,
     id: `product-${Date.now()}-${Math.random().toString(16).slice(2)}`, // Simulate unique ID
     creationDate: new Date().toISOString(),
-    artisanId: artisan.id, // Ensure artisanId is set correctly
+    artisanId: artisan.id, 
     isSold: false,
   };
   currentProducts.push(newProduct);
   
-  // Simulate adding to provenance
   currentProductProvenance[newProduct.id] = {
     productId: newProduct.id,
     history: [
@@ -93,7 +111,7 @@ export const updateProduct = async (productId: string, productData: Partial<Prod
     toast({ title: "Error", description: "Product not found.", variant: "destructive" });
     return null;
   }
-  const artisan = mockArtisans.find(a => a.walletAddress === artisanWallet);
+  const artisan = currentArtisans.find(a => a.walletAddress.toLowerCase() === artisanWallet.toLowerCase());
   if (!artisan || currentProducts[productIndex].artisanId !== artisan.id) {
      toast({ title: "Error", description: "Unauthorized to edit this product.", variant: "destructive" });
     return null;
@@ -101,7 +119,6 @@ export const updateProduct = async (productId: string, productData: Partial<Prod
 
   currentProducts[productIndex] = { ...currentProducts[productIndex], ...productData };
   
-  // Simulate adding to provenance
   if (currentProductProvenance[productId]) {
     currentProductProvenance[productId].history.push(
       { event: 'Product Updated', timestamp: new Date().toISOString(), actorAddress: artisanWallet, details: `Details of ${currentProducts[productIndex].name} updated.` }
@@ -119,14 +136,13 @@ export const removeProduct = async (productId: string, artisanWallet: string): P
     toast({ title: "Error", description: "Product not found.", variant: "destructive" });
     return false;
   }
-  const artisan = mockArtisans.find(a => a.walletAddress === artisanWallet);
+  const artisan = currentArtisans.find(a => a.walletAddress.toLowerCase() === artisanWallet.toLowerCase());
   if (!artisan || currentProducts[productIndex].artisanId !== artisan.id) {
      toast({ title: "Error", description: "Unauthorized to remove this product.", variant: "destructive" });
     return false;
   }
 
   currentProducts.splice(productIndex, 1);
-  // Also remove provenance if it exists
   delete currentProductProvenance[productId];
   
   toast({ title: "Product Removed", description: `Product has been successfully removed (simulated).` });
@@ -134,7 +150,7 @@ export const removeProduct = async (productId: string, artisanWallet: string): P
 };
 
 export const purchaseProduct = async (productId: string, buyerAddress: string): Promise<boolean> => {
-  await simulateDelay(2000); // Simulate longer transaction time
+  await simulateDelay(2000); 
   const productIndex = currentProducts.findIndex(p => p.id === productId);
   if (productIndex === -1 || currentProducts[productIndex].isSold) {
     toast({ title: "Purchase Failed", description: "Product not available or already sold.", variant: "destructive" });
@@ -142,12 +158,11 @@ export const purchaseProduct = async (productId: string, buyerAddress: string): 
   }
 
   const product = currentProducts[productIndex];
-  const artisan = mockArtisans.find(a => a.id === product.artisanId);
+  const artisan = currentArtisans.find(a => a.id === product.artisanId);
 
-  // Simulate NFT creation and transfer
   const newNft: NFT = {
     tokenId: product.id,
-    contractAddress: '0xMockNFTContractAddress', // Simulated contract address
+    contractAddress: '0xMockNFTContractAddress0123456789abcdef0123', // Simulated contract address
     name: product.name,
     imageUrl: product.imageUrl,
     description: product.description,
@@ -159,16 +174,14 @@ export const purchaseProduct = async (productId: string, buyerAddress: string): 
   }
   currentUserNfts[buyerAddress].push(newNft);
 
-  // Update product status
   currentProducts[productIndex].isSold = true;
   currentProducts[productIndex].ownerAddress = buyerAddress;
 
-  // Update provenance
    if (currentProductProvenance[productId]) {
     currentProductProvenance[productId].history.push(
       { event: 'Sold', timestamp: new Date().toISOString(), actorAddress: buyerAddress, details: `Purchased by ${buyerAddress}` }
     );
-  } else { // Create if doesn't exist (should normally exist)
+  } else { 
     currentProductProvenance[productId] = {
       productId: productId,
       history: [
@@ -188,12 +201,12 @@ export const getProductById = async (productId: string): Promise<Product | undef
 
 export const getAllProducts = async (): Promise<Product[]> => {
   await simulateDelay(300);
-  return [...currentProducts];
+  return [...currentProducts].filter(p => !p.isSold); // Only show unsold products on main page
 };
 
 export const getProductsByArtisan = async (artisanWallet: string): Promise<Product[]> => {
   await simulateDelay(300);
-  const artisan = mockArtisans.find(a => a.walletAddress === artisanWallet);
+  const artisan = currentArtisans.find(a => a.walletAddress.toLowerCase() === artisanWallet.toLowerCase());
   if (!artisan) return [];
   return currentProducts.filter(p => p.artisanId === artisan.id);
 }
@@ -205,64 +218,59 @@ export const getProductProvenance = async (productId: string): Promise<ProductPr
 
 export const getUserNfts = async (userAddress: string): Promise<NFT[]> => {
   await simulateDelay(300);
-  return currentUserNfts[userAddress] || [];
+  const nfts = currentUserNfts[userAddress.toLowerCase()] || [];
+  return JSON.parse(JSON.stringify(nfts)); // Return a copy
 };
 
 export const watchAssetInWallet = async (nft: NFT): Promise<boolean> => {
-  if (typeof window.ethereum !== 'undefined') {
+  if (typeof window.ethereum !== 'undefined' && window.ethereum.isMetaMask) {
     try {
-      await simulateDelay(500); // Simulate interaction
+      await simulateDelay(500);
       const wasAdded = await window.ethereum.request({
         method: 'wallet_watchAsset',
         params: {
-          type: 'ERC721', // or 'ERC1155'
+          type: 'ERC721', 
           options: {
             address: nft.contractAddress,
-            tokenId: nft.tokenId,
+            tokenId: nft.tokenId, 
           },
         },
       });
 
       if (wasAdded) {
-        toast({ title: "NFT Added", description: `${nft.name} should now be visible in your MetaMask wallet.` });
+        toast({ title: "NFT Added to Wallet", description: `${nft.name} should now be visible in your MetaMask wallet.` });
         return true;
       } else {
-        // This case might occur if the user cancels or if the wallet doesn't throw an error but returns false.
-        toast({ title: "NFT Not Added", description: "You chose not to add the NFT to your wallet, or the wallet provider indicated failure without an error.", variant: "default" });
+        toast({ title: "NFT Not Added", description: "Could not add the NFT to your wallet. The request may have been cancelled or failed.", variant: "default" });
         return false;
       }
     } catch (error: any) {
-      console.error('Error watching asset (raw):', error); // Keep for debugging
+      console.error('Error watching asset (raw):', error); 
 
       let toastTitle = "Failed to Add NFT";
       let toastDescription = "An unknown error occurred while trying to add the NFT to your wallet.";
 
       if (error && typeof error === 'object') {
-        if (error.code === 4001) { // MetaMask user rejected request
+        if (error.code === 4001) { 
           toastTitle = "Request Cancelled";
           toastDescription = "You cancelled the request to add the NFT to your wallet.";
         } else if (error.message && typeof error.message === 'string' && error.message.trim() !== '') {
           toastDescription = error.message;
         } else if (Object.keys(error).length === 0 && error.constructor === Object) {
-          // Error is an empty object {}
-          toastDescription = "The wallet provider returned an unspecified error. Please try again or check your wallet application.";
+          toastDescription = "The wallet provider returned an unspecified error. This can happen if the token ID format is not supported or if the asset is already being watched.";
         } else {
-          // Error is an object but not an empty one and has no standard message
           try {
             const errStr = JSON.stringify(error);
-            // Avoid showing "{}" as the error string if stringify results in that.
             if (errStr !== '{}') { 
                  toastDescription = `An unexpected error occurred: ${errStr.substring(0, 100)}${errStr.length > 100 ? '...' : ''}`;
             } else {
-                 toastDescription = "The wallet provider returned an unspecified error object. Please try again or check your wallet application.";
+                 toastDescription = "The wallet provider returned an unspecified error object. Please try again.";
             }
           } catch (e) {
-            // JSON.stringify failed, stick to a more generic message for this case
-            toastDescription = "An non-descript error object was returned by the wallet provider. Please try again.";
+            toastDescription = "A non-descript error object was returned by the wallet provider. Please try again.";
           }
         }
       } else if (typeof error === 'string' && error.trim() !== '') {
-        // If the error itself is a string
         toastDescription = error;
       }
       
@@ -274,13 +282,12 @@ export const watchAssetInWallet = async (nft: NFT): Promise<boolean> => {
       return false;
     }
   } else {
-     toast({ title: "MetaMask Not Found", description: "Please install MetaMask.", variant: "destructive" });
+     toast({ title: "MetaMask Not Found", description: "Please install and activate MetaMask to use this feature.", variant: "destructive" });
     return false;
   }
 };
 
-// Function to get artisan details for display
 export const getArtisanDetails = async (artisanId: string): Promise<Artisan | undefined> => {
   await simulateDelay(100);
-  return mockArtisans.find(a => a.id === artisanId);
+  return currentArtisans.find(a => a.id === artisanId);
 };
