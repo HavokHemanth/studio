@@ -9,6 +9,7 @@ import { watchAssetInWallet } from '@/lib/blockchainService';
 import { Gem, ExternalLink, Info, ImageOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from '@/components/ui/badge'; // Added import for Badge
 
 export default function MyNftsPage() {
   const { account, userNfts, isLoading, connect } = useWallet();
