@@ -1,3 +1,4 @@
+
 // This service simulates blockchain interactions.
 // In a real DApp, this would use ethers.js or web3.js to interact with a smart contract.
 "use client";
@@ -234,8 +235,32 @@ export const watchAssetInWallet = async (nft: NFT): Promise<boolean> => {
         return false;
       }
     } catch (error: any) {
-      console.error('Error watching asset:', error);
-      toast({ title: "Error", description: error.message || "Could not add NFT to wallet.", variant: "destructive" });
+      console.error('Error watching asset:', error); // Logs the raw error for debugging
+      
+      let toastDescription = "An unknown error occurred while trying to add the NFT to your wallet.";
+      
+      if (error && typeof error === 'object' && error.message && typeof error.message === 'string' && error.message.trim() !== '') {
+        toastDescription = error.message;
+      } else if (typeof error === 'string' && error.trim() !== '') {
+        // If the error itself is a string
+        toastDescription = error;
+      }
+      // Example of handling specific error codes if your wallet provider uses them:
+      // else if (error && typeof error === 'object' && typeof error.code === 'number') {
+      //   switch(error.code) {
+      //     case 4001: // User rejected request
+      //       toastDescription = "Request to add NFT was cancelled.";
+      //       break;
+      //     default:
+      //       toastDescription = `An error occurred (code: ${error.code}) while trying to add the NFT to your wallet.`;
+      //   }
+      // }
+      
+      toast({ 
+        title: "Failed to Add NFT", 
+        description: toastDescription, 
+        variant: "destructive" 
+      });
       return false;
     }
   } else {
@@ -249,3 +274,4 @@ export const getArtisanDetails = async (artisanId: string): Promise<Artisan | un
   await simulateDelay(100);
   return mockArtisans.find(a => a.id === artisanId);
 };
+
