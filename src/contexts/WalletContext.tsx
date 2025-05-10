@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from 'react';
@@ -5,6 +6,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { connectWallet, getCurrentWallet, isArtisanRegistered, getUserNfts as fetchUserNfts, getArtisanByWalletAddress } from '@/lib/blockchainService';
 import type { NFT, Artisan } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+
+const SEPOLIA_CHAIN_ID = '0xaa36a7'; // Sepolia test network chain ID
 
 interface WalletContextType {
   account: string | null;
@@ -44,6 +47,50 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  const switchToSepolia = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: SEPOLIA_CHAIN_ID }],
+        });
+        return true;
+      } catch (switchError: any) {
+        // This error code indicates that the chain has not been added to MetaMask.
+        if (switchError.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId: SEPOLIA_CHAIN_ID,
+                  chainName: 'Sepolia Test Network',
+                  rpcUrls: ['https://sepolia.infura.io/v3/'], // Replace with your preferred RPC
+                  nativeCurrency: {
+                    name: 'SepoliaETH',
+                    symbol: 'SEP',
+                    decimals: 18,
+                  },
+                  blockExplorerUrls: ['https://sepolia.etherscan.io'],
+                },
+              ],
+            });
+            return true;
+          } catch (addError) {
+            console.error("Failed to add Sepolia network:", addError);
+            toast({ title: "Network Error", description: "Failed to add Sepolia network to MetaMask.", variant: "destructive"});
+            return false;
+          }
+        } else {
+            console.error("Failed to switch to Sepolia network:", switchError);
+            toast({ title: "Network Switch Failed", description: "Could not switch to Sepolia network. Please do it manually in MetaMask.", variant: "destructive"});
+            return false;
+        }
+      }
+    }
+    return false;
+  };
+
 
   const handleAccountsChanged = useCallback(async (accounts: string[]) => {
     if (accounts.length === 0) {
@@ -57,6 +104,23 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       toast({ title: 'Account Switched', description: `Connected to ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)}` });
     }
   }, [account, toast, checkArtisanStatus]); 
+
+  const handleChainChanged = useCallback(async (chainId: string) => {
+    console.log("Network changed to:", chainId);
+    if (chainId.toLowerCase() !== SEPOLIA_CHAIN_ID.toLowerCase()) {
+      toast({ title: "Incorrect Network", description: "Please switch to the Sepolia test network in MetaMask.", variant: "destructive" });
+      // Optionally try to auto-switch or disconnect
+      // const switched = await switchToSepolia();
+      // if (!switched) disconnect(); // or just inform the user
+    } else {
+        toast({ title: "Network Switched", description: "Connected to Sepolia test network." });
+        // Re-fetch data if necessary after network switch
+        if(account) {
+            await checkArtisanStatus(account);
+            await fetchNftsForAccount(account);
+        }
+    }
+  }, [account, checkArtisanStatus]);
 
   const disconnect = () => {
     setAccount(null);
@@ -81,15 +145,30 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const connect = async () => {
     setIsLoading(true);
-    const newAccount = await connectWallet();
+    const newAccount = await connectWallet(); // This gets accounts
     if (newAccount) {
+      // Check current network
+      if (typeof window.ethereum !== 'undefined') {
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' }) as string;
+        if (currentChainId.toLowerCase() !== SEPOLIA_CHAIN_ID.toLowerCase()) {
+          toast({ title: "Incorrect Network", description: "Attempting to switch to Sepolia network..." });
+          const switched = await switchToSepolia();
+          if (!switched) {
+            setIsLoading(false);
+            return; // Stop connection process if network switch fails
+          }
+        }
+      }
+
       setAccount(newAccount);
       await checkArtisanStatus(newAccount);
       await fetchNftsForAccount(newAccount);
        if (typeof window !== "undefined") {
         localStorage.setItem('walletConnected', 'true');
       }
-      toast({ title: 'Wallet Connected', description: `Address: ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)}` });
+      toast({ title: 'Wallet Connected', description: `Address: ${newAccount.substring(0,6)}...${newAccount.substring(newAccount.length-4)} on Sepolia.` });
+    } else {
+      // connectWallet handles its own error toasts if it returns null
     }
     setIsLoading(false);
   };
@@ -115,8 +194,15 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const init = async () => {
       setIsLoading(true);
       if (typeof window !== "undefined" && localStorage.getItem('walletConnected') === 'true') {
-        const currentAccount = await getCurrentWallet();
+        const currentAccount = await getCurrentWallet(); // This just gets accounts, not network
         if (currentAccount) {
+          if (typeof window.ethereum !== 'undefined') {
+            const currentChainId = await window.ethereum.request({ method: 'eth_chainId' }) as string;
+            if (currentChainId.toLowerCase() !== SEPOLIA_CHAIN_ID.toLowerCase()) {
+              toast({ title: "Incorrect Network", description: "Please switch to Sepolia test network.", variant: "destructive" });
+              // Consider auto-switch or guiding user
+            }
+          }
           setAccount(currentAccount);
           await checkArtisanStatus(currentAccount);
           await fetchNftsForAccount(currentAccount);
@@ -130,14 +216,17 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (typeof window.ethereum !== 'undefined') {
       window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+
     }
 
     return () => {
       if (typeof window.ethereum !== 'undefined') {
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
-  }, [handleAccountsChanged, checkArtisanStatus]);
+  }, [handleAccountsChanged, handleChainChanged, checkArtisanStatus]);
 
 
   return (
@@ -154,3 +243,4 @@ export const useWallet = (): WalletContextType => {
   }
   return context;
 };
+
